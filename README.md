@@ -30,14 +30,18 @@ half only waits for the `schedule` service and keeps no state of its own.
 
 ## Use
 
+![Pick a time](docs/picker.png)
+
+![Staged time](docs/staged.png)
+
 1. Write the task in the composer. The scheduled task sends **that text** to the
    model at the chosen time, so write it the way you would write a first
    message: goal, scope, output, constraints.
 2. Click **Schedule send** — on the new-session home it sits in the row above
    the composer, after the preset control; inside a conversation it sits in the
    composer tool row after the access-mode control.
-3. Pick a time: a common hour (the next 08:00 / 12:00 / 18:00 / 21:00) or any
-   other time within the next 24 hours.
+3. Pick a time: a quick hour (the next 12:00 or 18:00) or any other time
+   within the next 24 hours.
 4. A staging bar appears above the composer. Only its **Schedule** button
    creates the task. The draft then clears and the bar reports the scheduled
    time.

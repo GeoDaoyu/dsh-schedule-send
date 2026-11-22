@@ -508,7 +508,8 @@ window.__ModuleLoader__.load({
 
     /* ---------------------------------------------------------- time picker */
 
-    const PRESETS = [[8, 0], [12, 0], [18, 0], [21, 0]]
+    /** The two off-peak entry points the quick picks offer. */
+    const PRESETS = [[12, 0], [18, 0]]
 
     /**
      * One anchored panel of quick times plus a custom wall-clock entry.

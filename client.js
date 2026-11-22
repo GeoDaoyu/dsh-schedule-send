@@ -5,6 +5,8 @@
  * above the composer then turns the current draft into a one-shot task on the
  * official @deepseek-ai/dsh-schedule service (`remote.schedule.create`), so
  * nothing runs until the chosen time and no model turn is spent registering it.
+ * The quick pick is the next off-peak start (12:00 or 18:00), the two moments
+ * DeepSeek's half-price window opens.
  *
  * The picked time is only a staging state: the control and the bar say so, and
  * the bar's primary action ("安排发送") is the only thing that creates a task.
@@ -44,6 +46,9 @@ window.__ModuleLoader__.load({
       'picker.use': '使用此时间',
       'picker.resolved': '→ {when}',
       'picker.hint': '直接发送会立即执行；最远 24 小时',
+      'picker.quick': '谷时',
+      'picker.quickHint': '12:00 和 18:00 是谷时起点，价格是峰时的一半',
+      'picker.quickLabel': '安排在 {when}，谷时',
       'bar.title': '定时发送',
       'bar.remaining': '还有 {time}',
       'bar.imminent': '还有不到 1 分钟',
@@ -75,6 +80,9 @@ window.__ModuleLoader__.load({
       'picker.use': 'Use this time',
       'picker.resolved': '→ {when}',
       'picker.hint': 'Send runs it now; up to 24h ahead',
+      'picker.quick': 'Off-peak',
+      'picker.quickHint': '12:00 and 18:00 start off-peak, at half the peak price',
+      'picker.quickLabel': 'Schedule for {when}, off-peak',
       'bar.title': 'Schedule send',
       'bar.remaining': 'in {time}',
       'bar.imminent': 'in under a minute',
@@ -153,13 +161,13 @@ window.__ModuleLoader__.load({
 }
 .dss-panel-title { font-size: 13px; font-weight: 600; line-height: 20px; }
 .dss-panel-sub { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
-.dss-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.dss-presets { display: flex; }
 .dss-preset {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  padding: 7px 9px;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
   border: 0;
   border-radius: 10px;
   background: var(--dsw-alias-interactive-bg-hover);
@@ -177,8 +185,17 @@ window.__ModuleLoader__.load({
   background: var(--dsw-alias-button-ghost-active-fill);
   box-shadow: inset 0 0 0 1px var(--dsw-alias-button-ghost-active-border);
 }
-.dss-preset-time { font-size: 13px; font-weight: 500; line-height: 20px; font-variant-numeric: tabular-nums; }
-.dss-preset-day { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+.dss-preset-time { font-size: 14px; font-weight: 600; line-height: 20px; font-variant-numeric: tabular-nums; }
+.dss-preset-day { flex: 1; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+.dss-preset-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-state-business-tertiary);
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 11px;
+  line-height: 18px;
+}
 .dss-sep { display: flex; align-items: center; gap: 8px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 .dss-sep::after { flex: 1; height: 0.5px; background: var(--dsw-alias-border-l2); content: ''; }
 .dss-custom { display: flex; align-items: center; gap: 6px; }
@@ -508,8 +525,12 @@ window.__ModuleLoader__.load({
 
     /* ---------------------------------------------------------- time picker */
 
-    /** The two off-peak entry points the quick picks offer. */
-    const PRESETS = [[12, 0], [18, 0]]
+    /** The next off-peak start: 12:00, or 18:00 once noon has passed. */
+    function nextOffPeakStart(now) {
+      const noon = nextOccurrence(12, 0, now)
+      const evening = nextOccurrence(18, 0, now)
+      return noon.getTime() <= evening.getTime() ? noon : evening
+    }
 
     /**
      * One anchored panel of quick times plus a custom wall-clock entry.
@@ -521,7 +542,7 @@ window.__ModuleLoader__.load({
       const [position, setPosition] = useState(undefined)
       const [custom, setCustom] = useState(() => {
         const now = new Date()
-        return current === undefined ? clockText(nextOccurrence(12, 0, now)) : clockText(new Date(current))
+        return current === undefined ? clockText(nextOffPeakStart(now)) : clockText(new Date(current))
       })
 
       const place = useCallback(() => {
@@ -595,6 +616,8 @@ window.__ModuleLoader__.load({
 
       const now = new Date()
       const customAt = fromTimeInput(custom, now)
+      const quick = nextOffPeakStart(now)
+      const quickSelected = current !== undefined && Math.abs(current - quick.getTime()) < 60000
 
       return createPortal(
         h('div', {
@@ -610,21 +633,20 @@ window.__ModuleLoader__.load({
           h('div', { className: 'dss-panel-title' }, t('picker.title')),
           h('div', { className: 'dss-panel-sub' }, t('picker.subtitle')),
         ),
-        h('div', { className: 'dss-presets' }, PRESETS.map(([hour, minute], index) => {
-          const at = nextOccurrence(hour, minute, now)
-          const selected = current !== undefined && Math.abs(current - at.getTime()) < 60000
-          return h('button', {
-            key: `${hour}:${minute}`,
-            ref: index === 0 ? firstPresetRef : undefined,
+        h('div', { className: 'dss-presets' },
+          h('button', {
+            ref: firstPresetRef,
             type: 'button',
             className: 'dss-preset',
-            'data-selected': selected ? '' : undefined,
-            'aria-pressed': selected,
-            onClick: () => { commit(at.getTime()) },
+            'data-selected': quickSelected ? '' : undefined,
+            'aria-pressed': quickSelected,
+            'aria-label': t('picker.quickLabel', { when: whenText(quick, now, t) }),
+            title: t('picker.quickHint'),
+            onClick: () => { commit(quick.getTime()) },
           },
-          h('span', { className: 'dss-preset-time' }, clockText(at)),
-          h('span', { className: 'dss-preset-day' }, dayWord(at, now, t)))
-        })),
+          h('span', { className: 'dss-preset-time' }, clockText(quick)),
+          h('span', { className: 'dss-preset-day' }, dayWord(quick, now, t)),
+          h('span', { className: 'dss-preset-tag' }, t('picker.quick')))),
         h('div', { className: 'dss-sep' }, t('picker.other')),
         h('div', { className: 'dss-custom' },
           h('input', {

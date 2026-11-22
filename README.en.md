@@ -2,21 +2,40 @@
 
 # Schedule send · dsh-schedule-send
 
-Pick a time in the DSH composer and leave the message until then.
+Run non-urgent work in DeepSeek's off-peak hours: write it in the composer,
+have it start later.
 
-The plugin turns the current draft into a one-shot
+## Why this plugin exists
+
+DeepSeek bills tokens by time of day. On workdays (public holidays excluded),
+9:00–12:00 and 14:00–18:00 are peak; the rest is off-peak, at half the peak
+price. Most of my work is not urgent and a few hours' delay costs nothing, so
+I kept moving execution into the off-peak window.
+
+Telling dsh "run this at 12:00" does not work. It does not wait: that turn
+starts reading files, searching, and planning immediately, so the most
+token-heavy part still runs at peak and the saving is cut in half. The
+reminder is also appended to the current conversation, so whatever was
+gathered at registration time is still in context when the time comes.
+
+This plugin keeps the model out of the timing decision. Press **Schedule send**
+and the browser calls `create` on the official
 [@deepseek-ai/dsh-schedule](https://www.npmjs.com/package/@deepseek-ai/dsh-schedule)
-task delivered to this conversation at the chosen time. Nothing runs while you
-register it, so no tokens are spent early and the real run does not inherit a
-half-finished analysis.
+service, registering the draft as a one-shot task:
 
-## Why not just ask the model to run at 12:00
+- Registration: no model call, no tokens.
+- At the chosen time: only the text you wrote is delivered, starting from its
+  first sentence.
+- So the first token is already billed at the off-peak price.
 
-| | "Run this at 12:00" in the composer | This plugin |
+| | "Run this at 12:00" to the model | This plugin |
 | --- | --- | --- |
-| Registration | One model turn, which usually starts the work right away | A browser call to the Schedule service's `create`; no model turn |
+| Registration | One model turn, which usually starts the work | A browser call to the Schedule service; no tokens |
 | At the chosen time | Delivered with the whole registration conversation as context | Delivered with only the message you scheduled |
-| Reliability | Depends on the model honouring "register only" | Timing, target, and text are stored by the service |
+| Saving | Only the wrap-up runs off-peak | Off-peak from the first token |
+
+The longer story, with the price table and the writing recipe, is in the post
+[“dsh 延时任务”](https://geodaoyu.github.io/2026/10/19/dsh%20%E5%BB%B6%E6%97%B6%E4%BB%BB%E5%8A%A1/).
 
 ## Install
 
@@ -42,8 +61,14 @@ half only waits for the `schedule` service and keeps no state of its own.
 2. Click **Schedule send** — on the new-session home it sits in the row above
    the composer, after the preset control; inside a conversation it sits in the
    composer tool row after the access-mode control.
-3. Pick a time: a quick hour (the next 12:00 or 18:00) or any other time
-   within the next 24 hours.
+3. The panel has a single quick time: the **next off-peak start**.
+   - Before 12:00: today at 12:00.
+   - After 12:00: today at 18:00.
+   - After 18:00: tomorrow at 12:00.
+
+   Pick **Another time** for anything else (up to 24 hours ahead). If you are
+   already inside an off-peak window, just press Enter — no scheduled task
+   needed.
 4. A staging bar appears above the composer. Only its **Schedule** button
    creates the task. The draft then clears and the bar reports the scheduled
    time.
@@ -55,6 +80,9 @@ half only waits for the `schedule` service and keeps no state of its own.
 
 - One-shot `at` tasks only; there are no recurrence rules. Use the Automation
   tasks page or `schedule_create` for recurring work.
+- The quick time is simply the nearer of 12:00 and 18:00. It does not know
+  about workdays, public holidays, or whether you are already off-peak; if you
+  are, just send the message now.
 - Times can be at most 24 hours ahead; build longer-range work in Automation
   tasks.
 - The delivery target is always the **current conversation**; no new

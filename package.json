@@ -1,7 +1,7 @@
 {
   "name": "dsh-schedule-send",
   "version": "0.1.0",
-  "description": "Pick a time in the DSH composer and have the message run later, built on the official @deepseek-ai/dsh-schedule service.",
+  "description": "Defer a DSH composer message to DeepSeek's half-price off-peak hours as a one-shot @deepseek-ai/dsh-schedule task, registered without spending a model turn.",
   "type": "module",
   "icon": "icon.svg",
   "author": "geodaoyu",
@@ -20,6 +20,7 @@
     "cordis",
     "plugin",
     "schedule",
+    "off-peak",
     "timer",
     "composer",
     "ui"

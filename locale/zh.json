@@ -2,6 +2,6 @@
   "meta": {
     "title": "定时发送",
     "description": "给 DSH 输入框加上时钟选择器。选好时间后在输入框上方的确认条点「定时执行」，当前草稿就变成一条 @deepseek-ai/dsh-schedule 一次性任务，到点才投递到这条会话，登记时不会触发模型。时间按浏览器所在时区解释，附件不会随任务发送，任务可在「自动化任务」里查看或取消。",
-    "detail": "README.zh.md"
+    "detail": "README.md"
   }
 }

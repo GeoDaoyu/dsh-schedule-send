@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Schedule send",
+    "description": "Adds a clock control to the DSH composer. Pick a time, then confirm in the bar above the composer: the current draft becomes a one-shot @deepseek-ai/dsh-schedule task that is delivered to this conversation at that time, and nothing runs while you register it. Times use the browser's IANA zone, attachments are not included, and the task can be reviewed or cancelled in Automation tasks.",
+    "detail": "README.md"
+  }
+}

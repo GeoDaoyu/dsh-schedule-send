@@ -33,13 +33,14 @@ half only waits for the `schedule` service and keeps no state of its own.
 1. Write the task in the composer. The scheduled task sends **that text** to the
    model at the chosen time, so write it the way you would write a first
    message: goal, scope, output, constraints.
-2. Click **Schedule** — on the new-session home it sits in the row above the
-   composer, after the preset control; inside a conversation it sits in the
+2. Click **Schedule send** — on the new-session home it sits in the row above
+   the composer, after the preset control; inside a conversation it sits in the
    composer tool row after the access-mode control.
 3. Pick a time: a common hour (the next 08:00 / 12:00 / 18:00 / 21:00) or any
-   other time in the time field.
-4. A confirmation bar appears above the composer. Click **Schedule**. The draft
-   clears and the bar reports the scheduled time.
+   other time within the next 24 hours.
+4. A staging bar appears above the composer. Only its **Schedule** button
+   creates the task. The draft then clears and the bar reports the scheduled
+   time.
 5. At that time the message is delivered to this conversation and the model
    starts working. Review, pause, or delete the task under **Automation tasks**
    in the sidebar.
@@ -48,14 +49,19 @@ half only waits for the `schedule` service and keeps no state of its own.
 
 - One-shot `at` tasks only; there are no recurrence rules. Use the Automation
   tasks page or `schedule_create` for recurring work.
+- Times can be at most 24 hours ahead; build longer-range work in Automation
+  tasks.
 - The delivery target is always the **current conversation**; no new
   conversation is created.
-- Text only: attachments in the draft are not scheduled, and the bar says so.
+- Text only: attachments are not scheduled (the bar flags "No attachments"),
+  and `/` commands or `@` references travel as plain text instead of running or
+  resolving.
 - The task title is the first line of the draft, truncated to 60 characters.
 - Times are interpreted in the browser's IANA time zone (for example
   `Asia/Shanghai`).
-- The armed time lives in the page's memory only; a refresh forgets it, while
-  created tasks are durable.
+- A picked time is only a staging state: it is kept in this tab's
+  sessionStorage, survives a refresh, and is not a task. Pressing the composer's
+  own Send runs the draft now and clears it. Created tasks are durable.
 - The Host must be running to deliver. An occurrence that comes due while the
   Host is stopped is delivered once on the next start.
 - Requires DSH 0.2.2-rc.1 or later with `@deepseek-ai/dsh-schedule` present

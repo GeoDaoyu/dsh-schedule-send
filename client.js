@@ -1,16 +1,19 @@
 /**
  * dsh-schedule-send — browser half.
  *
- * A clock control beside the mode selector picks a wall-clock time; a thin
- * confirmation bar above the composer then turns the current draft into a
- * one-shot task on the official @deepseek-ai/dsh-schedule service
- * (`remote.schedule.create`), so nothing runs until the chosen time and no
- * model turn is spent on registration.
+ * A clock control beside the mode selector picks a wall-clock time; a thin bar
+ * above the composer then turns the current draft into a one-shot task on the
+ * official @deepseek-ai/dsh-schedule service (`remote.schedule.create`), so
+ * nothing runs until the chosen time and no model turn is spent registering it.
+ *
+ * The picked time is only a staging state: the control and the bar say so, and
+ * the bar's primary action ("安排发送") is the only thing that creates a task.
+ * The composer's own Send keeps its normal meaning and clears the staging.
  *
  * Placement follows the public slot contract only:
  *   - `conversation.hero.options`   new-session row, after the preset control
  *   - `conversation.input.left`     composer tool row, non-blank sessions
- *   - `conversation.input.dock`     the confirmation bar above the card
+ *   - `conversation.input.dock`     the staging bar above the card
  * Fixed overlays portal to the document body because the composer is their
  * containing block.
  */
@@ -25,52 +28,67 @@ window.__ModuleLoader__.load({
     const NAME = 'dsh-schedule-send'
     const NS = 'scheduleSend'
     const STYLE_TAG_ID = `${NAME}/styles.css`
+    const STORAGE_PREFIX = `${NAME}:pending:`
 
     /* ---------------------------------------------------------------- copy */
 
     const zh = {
-      trigger: '定时',
-      'trigger.tooltip': '选一个时间，到点再执行这条内容',
-      'picker.title': '定时执行',
-      'picker.subtitle': '到点后在这条会话里执行输入框的内容',
+      trigger: '定时发送',
+      'trigger.tooltip': '选一个时间，到点再发送输入框的内容',
+      'trigger.armed': '定时发送：{when}，尚未安排',
+      'picker.title': '定时发送',
+      'picker.subtitle': '到点后把输入框内容作为消息发到当前会话',
       'picker.today': '今天',
       'picker.tomorrow': '明天',
       'picker.other': '其他时间',
-      'picker.hint': '选好时间后，点输入框上方的「定时执行」',
-      'bar.title': '定时执行',
+      'picker.use': '使用此时间',
+      'picker.resolved': '→ {when}',
+      'picker.hint': '直接发送会立即执行；最远 24 小时',
+      'bar.title': '定时发送',
       'bar.remaining': '还有 {time}',
-      'bar.imminent': '不到 1 分钟',
+      'bar.imminent': '还有不到 1 分钟',
+      'bar.hint': '点「安排发送」才会创建任务',
       'bar.cancel': '取消',
-      'bar.confirm': '定时执行',
-      'bar.needDraft': '先输入要执行的内容',
-      'bar.attachments': '附件不会随定时任务发送',
-      'bar.done': '已安排 {time} 执行',
+      'bar.confirm': '安排发送',
+      'bar.busy': '正在安排…',
+      'bar.needDraft': '先输入要发送的内容',
+      'bar.attachments': '附件不发送',
+      'bar.done': '已安排在 {day} {time} 发送',
       'bar.doneHint': '可在「自动化任务」里查看或取消',
-      'bar.failed': '创建失败：{message}',
+      'bar.doneAttachments': '附件没有随任务发送',
+      'bar.failed': '创建失败，请重试',
+      'bar.expired': '这个时间已经过了，重新选一个',
       'bar.dismiss': '关闭',
       'unit.hour': '小时',
       'unit.minute': '分钟',
     }
 
     const en = {
-      trigger: 'Schedule',
-      'trigger.tooltip': 'Pick a time and run this message later',
-      'picker.title': 'Run later',
-      'picker.subtitle': 'Runs the composer text in this conversation at the chosen time',
+      trigger: 'Schedule send',
+      'trigger.tooltip': 'Pick a time and send the composer text later',
+      'trigger.armed': 'Schedule send: {when}, not scheduled yet',
+      'picker.title': 'Schedule send',
+      'picker.subtitle': 'Sends the text here at the chosen time',
       'picker.today': 'Today',
       'picker.tomorrow': 'Tomorrow',
-      'picker.other': 'Other time',
-      'picker.hint': 'Pick a time, then confirm above the composer',
-      'bar.title': 'Run later',
+      'picker.other': 'Another time',
+      'picker.use': 'Use this time',
+      'picker.resolved': '→ {when}',
+      'picker.hint': 'Send runs it now; up to 24h ahead',
+      'bar.title': 'Schedule send',
       'bar.remaining': 'in {time}',
       'bar.imminent': 'in under a minute',
+      'bar.hint': 'Press Schedule to create it',
       'bar.cancel': 'Cancel',
       'bar.confirm': 'Schedule',
+      'bar.busy': 'Scheduling…',
       'bar.needDraft': 'Type the message first',
-      'bar.attachments': 'Attachments are not included',
-      'bar.done': 'Scheduled for {time}',
+      'bar.attachments': 'No attachments',
+      'bar.done': 'Scheduled for {day} at {time}',
       'bar.doneHint': 'Manage or cancel it in Automation tasks',
-      'bar.failed': 'Could not schedule: {message}',
+      'bar.doneAttachments': 'Attachments were not included',
+      'bar.failed': 'Could not schedule, please retry',
+      'bar.expired': 'That time has passed, pick another',
       'bar.dismiss': 'Dismiss',
       'unit.hour': 'hr',
       'unit.minute': 'min',
@@ -87,7 +105,7 @@ window.__ModuleLoader__.load({
   gap: 4px;
   height: 28px;
   min-width: 0;
-  max-width: 180px;
+  max-width: 190px;
   padding: 0 8px;
   border: 0;
   border-radius: var(--dsw-radius-sm);
@@ -122,7 +140,7 @@ window.__ModuleLoader__.load({
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 264px;
+  width: 272px;
   padding: 12px;
   border-radius: 16px;
   background: var(--dsw-specific-menu);
@@ -155,13 +173,19 @@ window.__ModuleLoader__.load({
   outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
+.dss-preset[data-selected] {
+  background: var(--dsw-alias-button-ghost-active-fill);
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-button-ghost-active-border);
+}
 .dss-preset-time { font-size: 13px; font-weight: 500; line-height: 20px; font-variant-numeric: tabular-nums; }
 .dss-preset-day { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 .dss-sep { display: flex; align-items: center; gap: 8px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 .dss-sep::after { flex: 1; height: 0.5px; background: var(--dsw-alias-border-l2); content: ''; }
+.dss-custom { display: flex; align-items: center; gap: 6px; }
 .dss-time {
   box-sizing: border-box;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 32px;
   padding: 0 10px;
   border: 0.5px solid var(--dsw-alias-border-l4);
@@ -171,7 +195,30 @@ window.__ModuleLoader__.load({
   font-family: inherit;
   font-size: 13px;
 }
-.dss-time:focus-visible { outline: none; border-color: var(--dsw-alias-state-business-primary); }
+.dss-time:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
+  border-color: var(--dsw-alias-state-business-primary);
+}
+.dss-use {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-layer-3);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.dss-use:disabled { opacity: 0.4; cursor: default; }
+.dss-use:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+.dss-resolved { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; }
 .dss-hint { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 
 .dss-dock {
@@ -209,10 +256,24 @@ window.__ModuleLoader__.load({
 .dss-bar-icon { display: inline-flex; flex: none; color: var(--dsw-alias-label-tertiary); }
 .dss-bar-icon[data-state='done'] { color: var(--dsw-alias-state-success-primary); }
 .dss-bar-label { flex: none; font-size: 13px; font-weight: 500; line-height: 24px; color: var(--dsw-alias-label-primary); }
-.dss-bar-when { flex: none; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-primary-dimmed); }
-.dss-bar-note { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-tertiary); text-overflow: ellipsis; white-space: nowrap; }
-.dss-bar-flag { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; height: 20px; border-radius: 999px; background: var(--dsw-alias-state-warn-tertiary); color: var(--dsw-alias-state-warn-label); font-size: 12px; line-height: 18px; white-space: nowrap; }
-.dss-bar-error { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; line-height: 20px; color: var(--dsw-alias-state-error-primary); text-overflow: ellipsis; white-space: nowrap; }
+.dss-bar-when { flex: none; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-primary-dimmed); font-variant-numeric: tabular-nums; }
+.dss-bar-note { flex: 1; min-width: 40px; overflow: hidden; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-tertiary); text-overflow: ellipsis; white-space: nowrap; }
+.dss-bar-error { flex: 1; min-width: 40px; overflow: hidden; font-size: 12px; line-height: 20px; color: var(--dsw-alias-state-error-primary); text-overflow: ellipsis; white-space: nowrap; }
+.dss-bar-flag {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 120px;
+  overflow: hidden;
+  padding: 0 6px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--dsw-alias-state-warn-tertiary);
+  color: var(--dsw-alias-state-warn-label);
+  font-size: 12px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dss-bar-actions { display: flex; flex: none; align-items: center; gap: 6px; }
 
 .dss-ghost {
@@ -229,6 +290,7 @@ window.__ModuleLoader__.load({
   cursor: pointer;
 }
 @media (hover: hover) { .dss-ghost:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); } }
+.dss-ghost:disabled { opacity: 0.5; cursor: default; }
 .dss-primary {
   height: 28px;
   padding: 0 12px;
@@ -285,20 +347,23 @@ window.__ModuleLoader__.load({
       return `${date.getMonth() + 1}/${date.getDate()}`
     }
 
-    /** "today 12:00" — the label shared by the trigger, the bar, and the picker. */
+    /** "今天 12:00" — the form used by the trigger, the picker, and the bar. */
     function whenText(at, now, t) {
       return `${dayWord(at, now, t)} ${clockText(at)}`
     }
 
-    /** Remaining wait in the active locale's unit words. */
+    /** Remaining wait as a complete phrase: "还有 49 分钟" / "in 49 min". */
     function remainingText(at, now, t) {
       const minutes = Math.round((at.getTime() - now.getTime()) / 60000)
       if (minutes < 1) return t('bar.imminent')
       const hours = Math.floor(minutes / 60)
       const rest = minutes % 60
-      if (hours === 0) return `${rest} ${t('unit.minute')}`
-      if (rest === 0) return `${hours} ${t('unit.hour')}`
-      return `${hours} ${t('unit.hour')} ${rest} ${t('unit.minute')}`
+      const span = hours === 0
+        ? `${rest} ${t('unit.minute')}`
+        : rest === 0
+          ? `${hours} ${t('unit.hour')}`
+          : `${hours} ${t('unit.hour')} ${rest} ${t('unit.minute')}`
+      return t('bar.remaining', { time: span })
     }
 
     /** The IANA zone the wall-clock entry is interpreted in. */
@@ -328,13 +393,46 @@ window.__ModuleLoader__.load({
       return String(error)
     }
 
-    /* --------------------------------------------------- per-session memory */
+    /** Schedule input error code carried by a Remote failure, when present. */
+    function failureCode(error) {
+      if (error === null || typeof error !== 'object') return undefined
+      const details = error.details
+      if (details !== null && typeof details === 'object' && typeof details.code === 'string') return details.code
+      return undefined
+    }
 
-    const armedBySession = new Map()
-    const armedListeners = new Set()
+    /* ------------------------------------------------ pending-time memory */
 
-    function notifyArmed() {
-      for (const listener of [...armedListeners]) {
+    /**
+     * The staged time is not a task yet, so it lives in this page: a module
+     * map for live subscribers, mirrored into sessionStorage so a refresh
+     * keeps showing "not scheduled yet" instead of dropping it silently.
+     */
+    function readPending() {
+      const next = new Map()
+      try {
+        const now = Date.now()
+        for (let index = 0; index < sessionStorage.length; index += 1) {
+          const key = sessionStorage.key(index)
+          if (key === null || !key.startsWith(STORAGE_PREFIX)) continue
+          const at = Number(sessionStorage.getItem(key))
+          if (!Number.isFinite(at) || at <= now) {
+            sessionStorage.removeItem(key)
+            continue
+          }
+          next.set(key.slice(STORAGE_PREFIX.length), at)
+        }
+      } catch (_error) {
+        /* A browser without sessionStorage keeps the in-memory staging only. */
+      }
+      return next
+    }
+
+    const pendingBySession = readPending()
+    const pendingListeners = new Set()
+
+    function notifyPending() {
+      for (const listener of [...pendingListeners]) {
         try {
           listener()
         } catch (_error) {
@@ -344,27 +442,29 @@ window.__ModuleLoader__.load({
     }
 
     function readArmed(sessionId) {
-      return sessionId === undefined ? undefined : armedBySession.get(sessionId)
+      return sessionId === undefined ? undefined : pendingBySession.get(sessionId)
     }
 
     function writeArmed(sessionId, at) {
       if (sessionId === undefined) return
-      const previous = armedBySession.get(sessionId)
+      const previous = pendingBySession.get(sessionId)
       if (at === undefined) {
         if (previous === undefined) return
-        armedBySession.delete(sessionId)
+        pendingBySession.delete(sessionId)
+        try { sessionStorage.removeItem(STORAGE_PREFIX + sessionId) } catch (_error) { /* memory only */ }
       } else {
         if (previous === at) return
-        armedBySession.set(sessionId, at)
+        pendingBySession.set(sessionId, at)
+        try { sessionStorage.setItem(STORAGE_PREFIX + sessionId, String(at)) } catch (_error) { /* memory only */ }
       }
-      notifyArmed()
+      notifyPending()
     }
 
-    /** Subscribe one component to the session's armed time. */
+    /** Subscribe one component to the session's staged time. */
     function useArmed(sessionId) {
       const subscribe = useCallback(listener => {
-        armedListeners.add(listener)
-        return () => { armedListeners.delete(listener) }
+        pendingListeners.add(listener)
+        return () => { pendingListeners.delete(listener) }
       }, [])
       const snapshot = useCallback(() => readArmed(sessionId), [sessionId])
       return useSyncExternalStore(subscribe, snapshot, snapshot)
@@ -412,10 +512,11 @@ window.__ModuleLoader__.load({
 
     /**
      * One anchored panel of quick times plus a custom wall-clock entry.
-     * @param props - the trigger element, copy, current arming, and callbacks.
+     * @param props - the trigger element, copy, staged time, and callbacks.
      */
     function TimePanel({ anchorRef, t, current, onPick, onClose }) {
       const panelRef = useRef(null)
+      const firstPresetRef = useRef(null)
       const [position, setPosition] = useState(undefined)
       const [custom, setCustom] = useState(() => {
         const now = new Date()
@@ -427,18 +528,30 @@ window.__ModuleLoader__.load({
         const panel = panelRef.current
         if (anchor === null) return
         const rect = anchor.getBoundingClientRect()
-        const width = panel === null ? 264 : panel.offsetWidth
-        const height = panel === null ? 240 : panel.offsetHeight
+        const width = panel === null ? 272 : panel.offsetWidth
+        const height = panel === null ? 260 : panel.offsetHeight
         const margin = 12
-        const below = rect.bottom + 6
-        const above = rect.top - 6 - height
-        const fitsBelow = window.innerHeight - rect.bottom >= height + margin
-        const top = fitsBelow || above < margin ? Math.min(below, window.innerHeight - height - margin) : above
-        const left = Math.min(Math.max(margin, rect.left), Math.max(margin, window.innerWidth - width - margin))
-        setPosition({ top: Math.max(margin, top), left })
+        const gap = 6
+        const belowSpace = window.innerHeight - rect.bottom - gap - margin
+        const aboveSpace = rect.top - gap - margin
+        const fitsBelow = belowSpace >= height
+        const fitsAbove = aboveSpace >= height
+        // Prefer the side that holds the whole panel; never sit on the trigger.
+        const openBelow = fitsBelow || (!fitsAbove && belowSpace >= aboveSpace)
+        const top = openBelow ? rect.bottom + gap : Math.max(margin, rect.top - gap - height)
+        const maxHeight = Math.max(120, openBelow ? belowSpace : aboveSpace)
+        // A trigger near the right edge end-aligns the panel, as host pickers do.
+        const startAligned = Math.max(margin, rect.left)
+        const endAligned = Math.min(rect.right - width, window.innerWidth - width - margin)
+        const left = startAligned + width > window.innerWidth - margin
+          ? Math.max(margin, endAligned)
+          : startAligned
+        setPosition({ top: Math.max(margin, top), left, maxHeight })
       }, [anchorRef])
 
       useLayoutEffect(() => { place() }, [place])
+
+      useEffect(() => { place() }, [custom, place])
 
       useEffect(() => {
         const onViewportChange = () => { place() }
@@ -451,6 +564,8 @@ window.__ModuleLoader__.load({
       }, [place])
 
       useEffect(() => {
+        // Keyboard users land inside the panel; Escape hands focus back.
+        if (firstPresetRef.current !== null) firstPresetRef.current.focus()
         const onPointerDown = event => {
           const target = event.target
           if (panelRef.current !== null && panelRef.current.contains(target)) return
@@ -461,7 +576,6 @@ window.__ModuleLoader__.load({
           if (event.key !== 'Escape') return
           event.stopPropagation()
           onClose()
-          // Escape returns focus to the control that opened the panel.
           if (anchorRef.current !== null) anchorRef.current.focus()
         }
         document.addEventListener('pointerdown', onPointerDown, true)
@@ -472,7 +586,14 @@ window.__ModuleLoader__.load({
         }
       }, [anchorRef, onClose])
 
+      const commit = useCallback(at => {
+        onPick(at)
+        onClose()
+        if (anchorRef.current !== null) anchorRef.current.focus()
+      }, [anchorRef, onClose, onPick])
+
       const now = new Date()
+      const customAt = fromTimeInput(custom, now)
 
       return createPortal(
         h('div', {
@@ -482,37 +603,52 @@ window.__ModuleLoader__.load({
           'aria-label': t('picker.title'),
           style: position === undefined
             ? { top: -10000, left: -10000 }
-            : { top: position.top, left: position.left },
+            : { top: position.top, left: position.left, maxHeight: position.maxHeight, overflowY: 'auto' },
         },
         h('div', null,
           h('div', { className: 'dss-panel-title' }, t('picker.title')),
           h('div', { className: 'dss-panel-sub' }, t('picker.subtitle')),
         ),
-        h('div', { className: 'dss-presets' }, PRESETS.map(([hour, minute]) => {
+        h('div', { className: 'dss-presets' }, PRESETS.map(([hour, minute], index) => {
           const at = nextOccurrence(hour, minute, now)
+          const selected = current !== undefined && Math.abs(current - at.getTime()) < 60000
           return h('button', {
             key: `${hour}:${minute}`,
+            ref: index === 0 ? firstPresetRef : undefined,
             type: 'button',
             className: 'dss-preset',
-            onClick: () => { onPick(at.getTime()); onClose() },
+            'data-selected': selected ? '' : undefined,
+            'aria-pressed': selected,
+            onClick: () => { commit(at.getTime()) },
           },
           h('span', { className: 'dss-preset-time' }, clockText(at)),
           h('span', { className: 'dss-preset-day' }, dayWord(at, now, t)))
         })),
         h('div', { className: 'dss-sep' }, t('picker.other')),
-        h('input', {
-          className: 'dss-time',
-          type: 'time',
-          step: 60,
-          value: custom,
-          'aria-label': t('picker.other'),
-          onChange: event => {
-            const value = event.target.value
-            setCustom(value)
-            const at = fromTimeInput(value, new Date())
-            if (at !== undefined) onPick(at.getTime())
-          },
-        }),
+        h('div', { className: 'dss-custom' },
+          h('input', {
+            className: 'dss-time',
+            type: 'time',
+            step: 60,
+            value: custom,
+            'aria-label': t('picker.other'),
+            onChange: event => { setCustom(event.target.value) },
+            onKeyDown: event => {
+              if (event.key !== 'Enter' || customAt === undefined) return
+              event.preventDefault()
+              commit(customAt.getTime())
+            },
+          }),
+          h('button', {
+            type: 'button',
+            className: 'dss-use',
+            disabled: customAt === undefined,
+            onClick: () => { if (customAt !== undefined) commit(customAt.getTime()) },
+          }, t('picker.use'))),
+        customAt === undefined
+          ? null
+          : h('div', { className: 'dss-resolved' },
+            t('picker.resolved', { when: whenText(customAt, now, t) })),
         h('div', { className: 'dss-hint' }, t('picker.hint'))),
         document.body,
       )
@@ -521,7 +657,7 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------- trigger */
 
     /**
-     * The clock control: shows the armed time, and opens the time panel.
+     * The clock control: shows the staged time, and opens the time panel.
      * @param props - standard Session props plus the placement variant.
      */
     function ClockTrigger({ t, sessionId, variant }) {
@@ -532,7 +668,8 @@ window.__ModuleLoader__.load({
       useEffect(() => { setOpen(false) }, [sessionId])
 
       const now = new Date()
-      const label = armed === undefined ? t('trigger') : whenText(new Date(armed), now, t)
+      const when = armed === undefined ? undefined : whenText(new Date(armed), now, t)
+      const label = when === undefined ? t('trigger') : when
 
       return h('div', { className: 'dss-root' },
         h('button', {
@@ -543,6 +680,7 @@ window.__ModuleLoader__.load({
           'data-armed': armed === undefined ? undefined : '',
           'aria-haspopup': 'dialog',
           'aria-expanded': open,
+          'aria-label': when === undefined ? t('trigger') : t('trigger.armed', { when }),
           title: t('trigger.tooltip'),
           onClick: () => { setOpen(value => !value) },
         },
@@ -567,10 +705,10 @@ window.__ModuleLoader__.load({
       return h(ClockTrigger, { ...props, variant: 'inline' })
     }
 
-    /* ------------------------------------------------------- confirmation bar */
+    /* ------------------------------------------------------- staging bar */
 
     /**
-     * The armed bar above the composer card: confirms, cancels, and reports.
+     * The staging bar above the composer card: stages, cancels, and reports.
      * @param props - standard Session props, copy, and the Client context.
      */
     function ConfirmBar({ t, ctx, sessionId, useInput, inputActions }) {
@@ -581,7 +719,9 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState(false)
       const [failure, setFailure] = useState(undefined)
       const [done, setDone] = useState(undefined)
+      const [, setTick] = useState(0)
       const dismissTimer = useRef(undefined)
+      const submitLock = useRef(false)
 
       useEffect(() => () => {
         if (dismissTimer.current !== undefined) clearTimeout(dismissTimer.current)
@@ -589,8 +729,22 @@ window.__ModuleLoader__.load({
 
       useEffect(() => { setFailure(undefined) }, [armed])
 
-      // Sending the draft now consumes the text the arming was meant for, so the
-      // pending schedule is dropped instead of lingering over an empty composer.
+      // A new staged time replaces the previous success/error report.
+      useEffect(() => {
+        if (armed === undefined) return
+        setDone(undefined)
+      }, [armed])
+
+      useEffect(() => { setDone(undefined) }, [sessionId])
+
+      // Keep the remaining-time copy live and notice the moment the time passes.
+      useEffect(() => {
+        if (armed === undefined) return undefined
+        const timer = setInterval(() => { setTick(value => value + 1) }, 30000)
+        return () => { clearInterval(timer) }
+      }, [armed])
+
+      // Sending the draft now consumes the text the staging was meant for.
       useEffect(() => {
         if (phase !== 'sending' && phase !== 'submitting') return
         writeArmed(sessionId, undefined)
@@ -598,7 +752,12 @@ window.__ModuleLoader__.load({
 
       const submit = useCallback(async () => {
         const text = draft.trim()
-        if (text === '' || armed === undefined) return
+        if (text === '' || armed === undefined || submitLock.current) return
+        if (armed <= Date.now()) {
+          setFailure({ text: t('bar.expired') })
+          return
+        }
+        submitLock.current = true
         setBusy(true)
         setFailure(undefined)
         try {
@@ -610,28 +769,35 @@ window.__ModuleLoader__.load({
             target: { kind: 'session', sessionId },
           })
           if (result !== undefined && result.ok === false) {
-            setFailure(failureText(result.error))
+            const code = failureCode(result.error)
+            setFailure({
+              text: code === 'not_future' ? t('bar.expired') : t('bar.failed'),
+              detail: failureText(result.error),
+            })
+            if (code === 'not_future') writeArmed(sessionId, undefined)
             return
           }
-          const label = whenText(at, new Date(), t)
           inputActions.setDraft('')
           writeArmed(sessionId, undefined)
-          setDone(label)
+          setDone({ at, attachments: attachments > 0 })
           if (dismissTimer.current !== undefined) clearTimeout(dismissTimer.current)
-          dismissTimer.current = setTimeout(() => { setDone(undefined) }, 8000)
+          dismissTimer.current = setTimeout(() => { setDone(undefined) }, 10000)
         } catch (error) {
-          setFailure(failureText(error))
+          setFailure({ text: t('bar.failed'), detail: failureText(error) })
         } finally {
+          submitLock.current = false
           setBusy(false)
         }
-      }, [armed, ctx, draft, inputActions, sessionId, t])
+      }, [armed, attachments, ctx, draft, inputActions, sessionId, t])
 
       if (done !== undefined) {
         return h('div', { className: 'dss-dock' },
           h('div', { className: 'dss-bar', role: 'status' },
             h('span', { className: 'dss-bar-icon', 'data-state': 'done' }, h(CheckIcon, { size: 14 })),
-            h('span', { className: 'dss-bar-label' }, t('bar.done', { time: done })),
-            h('span', { className: 'dss-bar-note' }, t('bar.doneHint')),
+            h('span', { className: 'dss-bar-label' },
+              t('bar.done', { day: dayWord(done.at, new Date(), t), time: clockText(done.at) })),
+            h('span', { className: 'dss-bar-note' },
+              done.attachments ? t('bar.doneAttachments') : t('bar.doneHint')),
             h('div', { className: 'dss-bar-actions' },
               h('button', {
                 type: 'button', className: 'dss-ghost',
@@ -645,17 +811,24 @@ window.__ModuleLoader__.load({
       if (armed === undefined) return null
 
       const at = new Date(armed)
+      const now = new Date()
       const empty = draft.trim() === ''
+      const expired = armed <= now.getTime()
 
       return h('div', { className: 'dss-dock' },
         h('div', { className: 'dss-bar', role: 'group', 'aria-label': t('bar.title') },
           h('span', { className: 'dss-bar-icon' }, h(ClockIcon, { size: 14 })),
           h('span', { className: 'dss-bar-label' }, t('bar.title')),
-          h('span', { className: 'dss-bar-when' }, whenText(at, new Date(), t)),
+          h('span', { className: 'dss-bar-when' },
+            expired ? whenText(at, now, t) : `${whenText(at, now, t)} · ${remainingText(at, now, t)}`),
           failure !== undefined
-            ? h('span', { className: 'dss-bar-error', title: failure }, t('bar.failed', { message: failure }))
-            : h('span', { className: 'dss-bar-note' },
-              empty ? t('bar.needDraft') : t('bar.remaining', { time: remainingText(at, new Date(), t) })),
+            ? h('span', {
+              className: 'dss-bar-error',
+              role: 'alert',
+              title: failure.detail,
+            }, failure.text)
+            : h('span', { className: 'dss-bar-note', id: `${NAME}-note` },
+              expired ? t('bar.expired') : empty ? t('bar.needDraft') : t('bar.hint')),
           attachments > 0
             ? h('span', { className: 'dss-bar-flag' }, t('bar.attachments'))
             : null,
@@ -669,9 +842,11 @@ window.__ModuleLoader__.load({
             h('button', {
               type: 'button',
               className: 'dss-primary',
-              disabled: busy || empty,
+              disabled: busy || empty || expired,
+              'aria-busy': busy,
+              'aria-describedby': `${NAME}-note`,
               onClick: submit,
-            }, t('bar.confirm')))))
+            }, busy ? t('bar.busy') : t('bar.confirm')))))
     }
 
     /* --------------------------------------------------------------- plugin */

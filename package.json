@@ -1,6 +1,6 @@
 {
   "name": "dsh-schedule-send",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Defer a DSH composer message to DeepSeek's half-price off-peak hours as a one-shot @deepseek-ai/dsh-schedule task, registered without spending a model turn.",
   "type": "module",
   "icon": "icon.svg",

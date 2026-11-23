@@ -72,9 +72,11 @@ half only waits for the `schedule` service and keeps no state of its own.
 4. A staging bar appears above the composer. Only its **Schedule** button
    creates the task. The draft then clears and the bar reports the scheduled
    time.
-5. At that time the message is delivered to this conversation and the model
-   starts working. Review, pause, or delete the task under **Automation tasks**
-   in the sidebar.
+5. At that time the message is delivered and the model starts working. Where it
+   lands depends on the composer you scheduled from: an existing conversation
+   receives it with its history, while the new-session home starts a fresh
+   conversation from that text. Review, pause, or delete the task under
+   **Automation tasks** in the sidebar.
 
 ## Behaviour and limits
 
@@ -85,8 +87,10 @@ half only waits for the `schedule` service and keeps no state of its own.
   are, just send the message now.
 - Times can be at most 24 hours ahead; build longer-range work in Automation
   tasks.
-- The delivery target is always the **current conversation**; no new
-  conversation is created.
+- The delivery target follows the composer: an existing conversation receives
+  the message in place, while a task scheduled from the new-session home creates
+  its own conversation at delivery (same preset). Several messages scheduled at
+  the same moment in one workspace therefore stay in separate conversations.
 - Text only: attachments are not scheduled (the bar flags "No attachments"),
   and `/` commands or `@` references travel as plain text instead of running or
   resolving.

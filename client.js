@@ -40,6 +40,7 @@ window.__ModuleLoader__.load({
       'trigger.armed': '定时发送：{when}，尚未安排',
       'picker.title': '定时发送',
       'picker.subtitle': '到点后把输入框内容作为消息发到当前会话',
+      'picker.subtitleNew': '到点后新建一条会话，只发这段内容',
       'picker.today': '今天',
       'picker.tomorrow': '明天',
       'picker.other': '其他时间',
@@ -74,6 +75,7 @@ window.__ModuleLoader__.load({
       'trigger.armed': 'Schedule send: {when}, not scheduled yet',
       'picker.title': 'Schedule send',
       'picker.subtitle': 'Sends the text here at the chosen time',
+      'picker.subtitleNew': 'Starts a new conversation with this text',
       'picker.today': 'Today',
       'picker.tomorrow': 'Tomorrow',
       'picker.other': 'Another time',
@@ -534,9 +536,9 @@ window.__ModuleLoader__.load({
 
     /**
      * One anchored panel of quick times plus a custom wall-clock entry.
-     * @param props - the trigger element, copy, staged time, and callbacks.
+     * @param props - the trigger element, copy, staged time, blank-session flag, and callbacks.
      */
-    function TimePanel({ anchorRef, t, current, onPick, onClose }) {
+    function TimePanel({ anchorRef, t, blank, current, onPick, onClose }) {
       const panelRef = useRef(null)
       const firstPresetRef = useRef(null)
       const [position, setPosition] = useState(undefined)
@@ -631,7 +633,7 @@ window.__ModuleLoader__.load({
         },
         h('div', null,
           h('div', { className: 'dss-panel-title' }, t('picker.title')),
-          h('div', { className: 'dss-panel-sub' }, t('picker.subtitle')),
+          h('div', { className: 'dss-panel-sub' }, t(blank ? 'picker.subtitleNew' : 'picker.subtitle')),
         ),
         h('div', { className: 'dss-presets' },
           h('button', {
@@ -683,8 +685,9 @@ window.__ModuleLoader__.load({
      * The clock control: shows the staged time, and opens the time panel.
      * @param props - standard Session props plus the placement variant.
      */
-    function ClockTrigger({ t, sessionId, variant }) {
+    function ClockTrigger({ t, sessionId, variant, useSession }) {
       const armed = useArmed(sessionId)
+      const blank = useSession(state => state.blank)
       const [open, setOpen] = useState(false)
       const anchorRef = useRef(null)
 
@@ -714,6 +717,7 @@ window.__ModuleLoader__.load({
           ? h(TimePanel, {
             anchorRef,
             t,
+            blank,
             current: armed,
             onPick: at => { writeArmed(sessionId, at) },
             onClose: () => { setOpen(false) },
@@ -734,11 +738,21 @@ window.__ModuleLoader__.load({
      * The staging bar above the composer card: stages, cancels, and reports.
      * @param props - standard Session props, copy, and the Client context.
      */
-    function ConfirmBar({ t, ctx, sessionId, useInput, inputActions }) {
+    function ConfirmBar({
+      t, ctx, sessionId, useInput, useSession, useSessions, useWorkspaces, useProjection, inputActions,
+    }) {
       const armed = useArmed(sessionId)
       const draft = useInput(state => state.draft)
       const attachments = useInput(state => state.attachmentIds.length)
       const phase = useInput(state => state.phase)
+      const blank = useSession(state => state.blank)
+      // A blank Session has nothing to continue, and more than one staged message
+      // would otherwise all land in it. Create one Session per task instead.
+      const sessionCwd = useSessions(state => state.byId?.[sessionId]?.cwd)
+      const workspaceCwd = useWorkspaces(state =>
+        (state.items ?? []).find(item => item.sessionIds.includes(sessionId))?.path)
+      const cwd = sessionCwd ?? workspaceCwd
+      const agentPreset = useProjection('agentPreset')
       const [busy, setBusy] = useState(false)
       const [failure, setFailure] = useState(undefined)
       const [done, setDone] = useState(undefined)
@@ -789,7 +803,15 @@ window.__ModuleLoader__.load({
             title: taskTitle(text),
             prompt: text,
             timing: { kind: 'at', at: { date: isoDate(at), time: isoTime(at), time_zone: zoneName() } },
-            target: { kind: 'session', sessionId },
+            target: blank
+              ? {
+                kind: 'new_once',
+                create: {
+                  ...(cwd === undefined ? {} : { cwd }),
+                  ...(agentPreset === undefined ? {} : { agentPreset }),
+                },
+              }
+              : { kind: 'session', sessionId },
           })
           if (result !== undefined && result.ok === false) {
             const code = failureCode(result.error)
@@ -811,7 +833,7 @@ window.__ModuleLoader__.load({
           submitLock.current = false
           setBusy(false)
         }
-      }, [armed, attachments, ctx, draft, inputActions, sessionId, t])
+      }, [agentPreset, armed, attachments, blank, ctx, cwd, draft, inputActions, sessionId, t])
 
       if (done !== undefined) {
         return h('div', { className: 'dss-dock' },

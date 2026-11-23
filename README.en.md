@@ -76,7 +76,9 @@ half only waits for the `schedule` service and keeps no state of its own.
    lands depends on the composer you scheduled from: an existing conversation
    receives it with its history, while the new-session home starts a fresh
    conversation from that text. Review, pause, or delete the task under
-   **Automation tasks** in the sidebar.
+   **Automation tasks** in the sidebar. To change the wording after it has been
+   scheduled, edit or append to that task's content text there; no need to
+   schedule it again.
 
 ## Behaviour and limits
 

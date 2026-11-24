@@ -79,6 +79,15 @@ half only waits for the `schedule` service and keeps no state of its own.
    **Automation tasks** in the sidebar. To change the wording after it has been
    scheduled, edit or append to that task's content text there; no need to
    schedule it again.
+6. When you cannot wait for the chosen time, run it now: open **Automation
+   tasks** in the sidebar, select the task, and choose **⋯** → **Run now**. The
+   text is delivered immediately, the same way it would be at the scheduled
+   time. Two caveats:
+   - Run now only adds this one extra execution. It does not move or cancel the
+     scheduled occurrence, which still fires at its time; pause or delete the
+     task if you no longer want that one.
+   - A draft that was never scheduled is not in the task list; pressing the
+     composer's own Send runs it immediately in that case.
 
 ## Behaviour and limits
 
